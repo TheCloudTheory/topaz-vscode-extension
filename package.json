@@ -1,0 +1,66 @@
+{
+  "name": "topaz-vscode-extension",
+  "displayName": "Topaz",
+  "description": "Explore Topaz resources from VS Code",
+  "version": "0.1.0",
+  "publisher": "TheCloudTheory",
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Topaz",
+      "properties": {
+        "topaz.baseUrl": {
+          "type": "string",
+          "default": "https://topaz.local.dev:8899",
+          "description": "Base URL of the running Topaz instance"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "topaz",
+          "title": "Topaz",
+          "icon": "resources/topaz-logo.png"
+        }
+      ]
+    },
+    "views": {
+      "topaz": [
+        {
+          "id": "topazResources",
+          "name": "Resources"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "topaz.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Topaz"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "topaz.refresh",
+          "when": "view == topazResources",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  }
+}
