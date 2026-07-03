@@ -33,6 +33,10 @@
         {
           "id": "topazResources",
           "name": "Resources"
+        },
+        {
+          "id": "topazByServiceType",
+          "name": "By Service Type"
         }
       ]
     },
@@ -49,6 +53,11 @@
         {
           "command": "topaz.refresh",
           "when": "view == topazResources",
+          "group": "navigation"
+        },
+        {
+          "command": "topaz.refresh",
+          "when": "view == topazByServiceType",
           "group": "navigation"
         }
       ]
