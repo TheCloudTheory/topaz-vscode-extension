@@ -22,8 +22,11 @@ function checkHealth(baseUrl: string): Promise<boolean> {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const provider = new TopazTreeProvider(getBaseUrl);
 
+    const treeView = vscode.window.createTreeView('topazResources', { treeDataProvider: provider });
+    provider.setTreeView(treeView);
+
     context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('topazResources', provider),
+        treeView,
         vscode.commands.registerCommand('topaz.refresh', async () => {
             provider.setBaseUrl(getBaseUrl());
             await runHealthCheck(provider);

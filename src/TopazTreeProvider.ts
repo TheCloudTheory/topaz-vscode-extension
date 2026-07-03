@@ -1,6 +1,24 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
+import * as crypto from 'crypto';
 
+// Replicates JwtHelper.GenerateCliToken() from Topaz.Identity
+function generateAdminToken(baseUrl: string): string {
+    const secretB64 = 'yD1sMV1WcwVjSfNUxxLNfVHn5sbqD056LwOnkXCkIDnWkXcrg95plLQ3T1tvinLAnuNNiRRZrKyUvs6YzZnJ/A==';
+    const secret = Buffer.from(secretB64, 'base64');
+    const oid = '00000000-0000-0000-0000-000000000000';
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({
+        sub: oid, oid, appid: oid, azp: oid,
+        tid: '50717675-3E5E-4A1E-8CB5-C62D8BE8CA48',
+        iss: baseUrl,
+        aud: baseUrl,
+        nbf: now, iat: now, exp: now + 3600,
+    })).toString('base64url');
+    const sig = crypto.createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
+    return `${header}.${payload}.${sig}`;
+}
 export type NodeKind = 'managementGroup' | 'subscription' | 'resourceGroup' | 'resource';
 
 export interface TopazNode {
@@ -23,6 +41,7 @@ export class TopazTreeProvider implements vscode.TreeDataProvider<TopazNode> {
 
     private available = false;
     private baseUrl: string;
+    private treeView?: vscode.TreeView<TopazNode>;
 
     constructor(private getBaseUrl: () => string) {
         this.baseUrl = getBaseUrl();
@@ -30,6 +49,7 @@ export class TopazTreeProvider implements vscode.TreeDataProvider<TopazNode> {
 
     setAvailable(v: boolean): void { this.available = v; }
     setBaseUrl(url: string): void { this.baseUrl = url; }
+    setTreeView(view: vscode.TreeView<TopazNode>): void { this.treeView = view; }
     refresh(): void { this._onDidChangeTreeData.fire(); }
 
     getTreeItem(node: TopazNode): vscode.TreeItem {
@@ -47,11 +67,20 @@ export class TopazTreeProvider implements vscode.TreeDataProvider<TopazNode> {
     }
 
     async getChildren(parent?: TopazNode): Promise<TopazNode[]> {
-        if (!this.available) { return []; }
+        if (!this.available) {
+            if (this.treeView) { this.treeView.message = 'Topaz is not running or unreachable.'; }
+            return [];
+        }
 
         try {
             if (!parent) {
-                return await this.getManagementGroups();
+                const nodes = await this.getManagementGroups();
+                if (this.treeView) {
+                    this.treeView.message = nodes.length === 0
+                        ? 'No management groups found. Topaz may still be initializing.'
+                        : undefined;
+                }
+                return nodes;
             }
             switch (parent.kind) {
                 case 'managementGroup': return await this.getManagementGroupChildren(parent.id);
@@ -59,7 +88,13 @@ export class TopazTreeProvider implements vscode.TreeDataProvider<TopazNode> {
                 case 'resourceGroup':  return await this.getResources(parent.id);
                 default: return [];
             }
-        } catch {
+        } catch (e: unknown) {
+            if (this.treeView && !parent) {
+                const status = (e as { statusCode?: number }).statusCode;
+                this.treeView.message = status === 401
+                    ? 'Unauthorized. Make sure you are logged in to Azure CLI (`az login`).'
+                    : 'Failed to load resources. Check the Topaz output for details.';
+            }
             return [];
         }
     }
@@ -67,17 +102,32 @@ export class TopazTreeProvider implements vscode.TreeDataProvider<TopazNode> {
     // ── API helpers ──────────────────────────────────────────────────────────
 
     private get<T>(path: string): Promise<T> {
+        const token = generateAdminToken(this.baseUrl);
+        const url = new URL(`${this.baseUrl}${path}`);
+        const options: https.RequestOptions = {
+            hostname: url.hostname,
+            port: url.port,
+            path: url.pathname + url.search,
+            method: 'GET',
+            rejectUnauthorized: false,
+            headers: { Authorization: `Bearer ${token}` },
+        };
         return new Promise((resolve, reject) => {
-            const req = https.get(`${this.baseUrl}${path}`, { rejectUnauthorized: false }, res => {
+            const req = https.request(options, res => {
                 let data = '';
                 res.on('data', chunk => data += chunk);
                 res.on('end', () => {
+                    if (res.statusCode && res.statusCode >= 400) {
+                        reject(Object.assign(new Error(`HTTP ${res.statusCode}`), { statusCode: res.statusCode }));
+                        return;
+                    }
                     try { resolve(JSON.parse(data) as T); }
                     catch (e) { reject(e); }
                 });
             });
             req.on('error', reject);
             req.setTimeout(10000, () => { req.destroy(); reject(new Error('timeout')); });
+            req.end();
         });
     }
 
