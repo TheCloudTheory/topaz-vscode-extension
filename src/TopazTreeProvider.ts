@@ -5,7 +5,8 @@ import * as crypto from 'crypto';
 // Replicates JwtHelper.GenerateCliToken() from Topaz.Identity
 function generateAdminToken(baseUrl: string): string {
     const secretB64 = 'yD1sMV1WcwVjSfNUxxLNfVHn5sbqD056LwOnkXCkIDnWkXcrg95plLQ3T1tvinLAnuNNiRRZrKyUvs6YzZnJ/A==';
-    const secret = Buffer.from(secretB64, 'base64');
+    // C# `"..."u8.ToArray()` produces UTF-8 bytes of the string itself, not base64-decoded bytes
+    const secret = Buffer.from(secretB64, 'utf8');
     const oid = '00000000-0000-0000-0000-000000000000';
     const now = Math.floor(Date.now() / 1000);
     const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
