@@ -19,6 +19,34 @@ function generateAdminToken(baseUrl: string): string {
     return `${header}.${payload}.${sig}`;
 }
 
+const FRIENDLY_NAMES: Record<string, string> = {
+    'microsoft.resources/resourcegroups':           'Resource Groups',
+    'microsoft.resources/deployments':              'ARM Deployments',
+    'microsoft.resources/subscriptions':            'Subscriptions',
+    'microsoft.authorization/roledefinitions':      'Role Definitions',
+    'microsoft.authorization/roleassignments':      'Role Assignments',
+    'microsoft.storage/storageaccounts':            'Storage Accounts',
+    'microsoft.keyvault/vaults':                    'Key Vaults',
+    'microsoft.managedidentity/userassignedidentities': 'User-Assigned Identities',
+    'microsoft.network/virtualnetworks':            'Virtual Networks',
+    'microsoft.network/networkinterfaces':          'Network Interfaces',
+    'microsoft.network/publicipaddresses':          'Public IP Addresses',
+    'microsoft.servicebus/namespaces':              'Service Bus Namespaces',
+    'microsoft.eventhub/namespaces':                'Event Hub Namespaces',
+    'microsoft.insights/components':                'Application Insights',
+    'microsoft.containerregistry/registries':       'Container Registries',
+    'microsoft.compute/virtualmachines':            'Virtual Machines',
+    'microsoft.compute/disks':                      'Managed Disks',
+    'microsoft.documentdb/databaseaccounts':        'Cosmos DB Accounts',
+    'microsoft.appconfiguration/configurationstores': 'App Configuration Stores',
+    'microsoft.sql/servers':                        'SQL Servers',
+    'microsoft.sql/servers/databases':              'SQL Databases',
+    'microsoft.web/serverfarms':                    'App Service Plans',
+    'microsoft.web/sites':                          'App Services',
+    'microsoft.management/managementgroups':        'Management Groups',
+    'microsoft.operationalinsights/workspaces':     'Log Analytics Workspaces',
+};
+
 export type ServiceTypeNodeKind = 'serviceType' | 'resource';
 
 export interface ServiceTypeNode {
@@ -104,11 +132,11 @@ export class TopazServiceTypeTreeProvider implements vscode.TreeDataProvider<Ser
         }
         const nodes: ServiceTypeNode[] = [];
         for (const [type, resources] of this.resourcesByType ?? []) {
-            const shortType = type.split('/').slice(1).join('/') || type;
+            const friendly = FRIENDLY_NAMES[type] ?? (type.split('/').slice(1).join('/') || type);
             nodes.push({
                 kind: 'serviceType',
                 id: type,
-                label: shortType,
+                label: friendly,
                 description: `${resources.length} resource${resources.length !== 1 ? 's' : ''}`,
             });
         }
