@@ -1,7 +1,7 @@
 {
-  "name": "topaz-vscode-extension",
-  "displayName": "Topaz",
-  "description": "Explore Topaz resources from VS Code",
+  "name": "topaz-azure-emulator",
+  "displayName": "Topaz Azure Emulator",
+  "description": "Local Azure development with Topaz — explore resources without leaving VS Code",
   "version": "1.0.0",
   "publisher": "TheCloudTheory",
   "engines": { "vscode": "^1.90.0" },
