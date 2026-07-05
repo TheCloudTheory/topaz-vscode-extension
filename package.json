@@ -52,6 +52,18 @@
         "title": "Refresh",
         "icon": "$(refresh)",
         "category": "Topaz"
+      },
+      {
+        "command": "topaz.createManagementGroup",
+        "title": "Create Management Group",
+        "icon": "$(organization)",
+        "category": "Topaz"
+      },
+      {
+        "command": "topaz.createSubscription",
+        "title": "Create Subscription",
+        "icon": "$(add)",
+        "category": "Topaz"
       }
     ],
     "menus": {
@@ -65,6 +77,18 @@
           "command": "topaz.refresh",
           "when": "view == topazByServiceType",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "topaz.createManagementGroup",
+          "when": "view == topazResources && viewItem == managementGroup",
+          "group": "inline@1"
+        },
+        {
+          "command": "topaz.createSubscription",
+          "when": "view == topazResources && viewItem == managementGroup",
+          "group": "inline@2"
         }
       ]
     }

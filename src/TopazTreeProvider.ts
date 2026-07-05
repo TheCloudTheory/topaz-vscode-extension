@@ -1,25 +1,6 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
-import * as crypto from 'crypto';
-
-// Replicates JwtHelper.GenerateCliToken() from Topaz.Identity
-function generateAdminToken(baseUrl: string): string {
-    const secretB64 = 'yD1sMV1WcwVjSfNUxxLNfVHn5sbqD056LwOnkXCkIDnWkXcrg95plLQ3T1tvinLAnuNNiRRZrKyUvs6YzZnJ/A==';
-    // C# `"..."u8.ToArray()` produces UTF-8 bytes of the string itself, not base64-decoded bytes
-    const secret = Buffer.from(secretB64, 'utf8');
-    const oid = '00000000-0000-0000-0000-000000000000';
-    const now = Math.floor(Date.now() / 1000);
-    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const payload = Buffer.from(JSON.stringify({
-        sub: oid, oid, appid: oid, azp: oid,
-        tid: '50717675-3E5E-4A1E-8CB5-C62D8BE8CA48',
-        iss: baseUrl,
-        aud: baseUrl,
-        nbf: now, iat: now, exp: now + 3600,
-    })).toString('base64url');
-    const sig = crypto.createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
-    return `${header}.${payload}.${sig}`;
-}
+import { generateAdminToken } from './auth';
 export type NodeKind = 'managementGroup' | 'subscription' | 'resourceGroup' | 'resource';
 
 export interface TopazNode {
@@ -133,35 +114,41 @@ export class TopazTreeProvider implements vscode.TreeDataProvider<TopazNode> {
     }
 
     private async getManagementGroups(): Promise<TopazNode[]> {
-        const res = await this.get<{ value: Array<{ id: string; name: string; properties?: { displayName?: string } }> }>(
+        const res = await this.get<{ value: Array<{ id: string; name: string; properties?: { displayName?: string; details?: { parent?: { id?: string } } } }> }>(
             '/providers/Microsoft.Management/managementGroups?api-version=2020-05-01'
         );
-        return (res.value ?? []).map(g => ({
-            kind: 'managementGroup',
-            id: g.id,
-            label: g.properties?.displayName ?? g.name,
-        }));
+        return (res.value ?? [])
+            .filter(g => {
+                const parentId = g.properties?.details?.parent?.id;
+                // Keep only root-level groups: no parent, or parent is itself (tenant root)
+                return !parentId || parentId === g.id;
+            })
+            .map(g => ({
+                kind: 'managementGroup',
+                id: g.id,
+                label: g.properties?.displayName ?? g.name,
+            }));
     }
 
     private async getManagementGroupChildren(mgId: string): Promise<TopazNode[]> {
         // mgId is the full path like /providers/Microsoft.Management/managementGroups/{name}
         const name = mgId.split('/').pop()!;
         const res = await this.get<{
-            properties?: {
-                children?: Array<{ id: string; name: string; type: string; displayName?: string }>;
-            };
-        }>(`/providers/Microsoft.Management/managementGroups/${name}?api-version=2020-05-01&$expand=children`);
+            value?: Array<{ id: string; name: string; type: string; properties?: { displayName?: string; parent?: { id?: string } } }>;
+        }>(`/providers/Microsoft.Management/managementGroups/${name}/descendants?api-version=2020-05-01`);
 
-        const children = res.properties?.children ?? [];
-        return children.map(c => {
-            const isSub = c.type === '/subscriptions';
-            return {
-                kind: isSub ? 'subscription' : 'managementGroup',
-                id: c.id,
-                label: c.displayName ?? c.name,
-                description: isSub ? 'subscription' : undefined,
-            } as TopazNode;
-        });
+        const children = res.value ?? [];
+        return children
+            .filter(c => c.properties?.parent?.id === mgId)
+            .map(c => {
+                const isSub = c.type === '/subscriptions';
+                return {
+                    kind: isSub ? 'subscription' : 'managementGroup',
+                    id: c.id,
+                    label: c.properties?.displayName ?? c.name,
+                    description: isSub ? 'subscription' : undefined,
+                } as TopazNode;
+            });
     }
 
     private async getResourceGroups(subscriptionId: string): Promise<TopazNode[]> {

@@ -1,23 +1,6 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
-import * as crypto from 'crypto';
-
-function generateAdminToken(baseUrl: string): string {
-    const secretB64 = 'yD1sMV1WcwVjSfNUxxLNfVHn5sbqD056LwOnkXCkIDnWkXcrg95plLQ3T1tvinLAnuNNiRRZrKyUvs6YzZnJ/A==';
-    const secret = Buffer.from(secretB64, 'utf8');
-    const oid = '00000000-0000-0000-0000-000000000000';
-    const now = Math.floor(Date.now() / 1000);
-    const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
-    const payload = Buffer.from(JSON.stringify({
-        sub: oid, oid, appid: oid, azp: oid,
-        tid: '50717675-3E5E-4A1E-8CB5-C62D8BE8CA48',
-        iss: baseUrl,
-        aud: baseUrl,
-        nbf: now, iat: now, exp: now + 3600,
-    })).toString('base64url');
-    const sig = crypto.createHmac('sha256', secret).update(`${header}.${payload}`).digest('base64url');
-    return `${header}.${payload}.${sig}`;
-}
+import { generateAdminToken } from './auth';
 
 const FRIENDLY_NAMES: Record<string, string> = {
     'microsoft.resources/resourcegroups':           'Resource Groups',
