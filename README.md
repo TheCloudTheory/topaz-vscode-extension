@@ -1,5 +1,8 @@
 # Topaz - VS Code Extension
 
+[![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/TheCloudTheory.topaz-azure-emulator?label=VS%20Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=TheCloudTheory.topaz-azure-emulator)
+[![Install in VS Code](https://img.shields.io/badge/Install-VS%20Code-007ACC?logo=visualstudiocode)](vscode:extension/TheCloudTheory.topaz-azure-emulator)
+
 Explore and manage [Topaz](https://topaz.thecloudtheory.com/) resources directly from VS Code.
 
 ## What is Topaz?
