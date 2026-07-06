@@ -162,7 +162,10 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<boolean> {
     // Compile first so we can detect scope for Bicep (or validate JSON early)
     let templateJson: string;
     try {
-        templateJson = await compileToArmJson(doc);
+        templateJson = await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: doc.languageId === 'bicep' ? 'Compiling Bicep template…' : 'Reading template…', cancellable: false },
+            () => compileToArmJson(doc)
+        );
     } catch (e: unknown) {
         vscode.window.showErrorMessage(`Bicep compile failed: ${(e as Error).message}`);
         return false;
