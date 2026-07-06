@@ -3,6 +3,7 @@ import * as https from 'https';
 import * as crypto from 'crypto';
 import { TopazTreeProvider } from './TopazTreeProvider';
 import { TopazServiceTypeTreeProvider } from './TopazServiceTypeTreeProvider';
+import { TopazStatusProvider } from './TopazStatusProvider';
 import { TopazNode } from './TopazTreeProvider';
 import { generateAdminToken } from './auth';
 
@@ -60,6 +61,7 @@ function checkHealth(baseUrl: string): Promise<boolean> {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const provider = new TopazTreeProvider(getBaseUrl);
     const serviceTypeProvider = new TopazServiceTypeTreeProvider(getBaseUrl);
+    const statusProvider = new TopazStatusProvider(getBaseUrl);
 
     const treeView = vscode.window.createTreeView('topazResources', { treeDataProvider: provider });
     provider.setTreeView(treeView);
@@ -67,16 +69,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const serviceTypeView = vscode.window.createTreeView('topazByServiceType', { treeDataProvider: serviceTypeProvider });
     serviceTypeProvider.setTreeView(serviceTypeView);
 
+    vscode.window.createTreeView('topazStatus', { treeDataProvider: statusProvider });
+
     context.subscriptions.push(
         treeView,
         serviceTypeView,
         vscode.commands.registerCommand('topaz.refresh', async () => {
             provider.setBaseUrl(getBaseUrl());
             serviceTypeProvider.setBaseUrl(getBaseUrl());
+            statusProvider.setBaseUrl(getBaseUrl());
             await runHealthCheck(provider, serviceTypeProvider);
             provider.refresh();
             serviceTypeProvider.refresh();
+            statusProvider.refresh();
         }),
+        vscode.commands.registerCommand('topaz.refreshStatus', () => { statusProvider.refresh(); }),
         vscode.commands.registerCommand('topaz.createManagementGroup', async (node?: TopazNode) => {
             const parentName = node ? node.id.split('/').pop()! : '50717675-3E5E-4A1E-8CB5-C62D8BE8CA48';
             const name = await vscode.window.showInputBox({ prompt: 'Management group name (ID)', placeHolder: 'my-management-group' });
@@ -136,13 +143,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             if (e.affectsConfiguration('topaz.baseUrl')) {
                 provider.setBaseUrl(getBaseUrl());
                 serviceTypeProvider.setBaseUrl(getBaseUrl());
+                statusProvider.setBaseUrl(getBaseUrl());
                 provider.refresh();
                 serviceTypeProvider.refresh();
+                statusProvider.refresh();
             }
         })
     );
 
     await runHealthCheck(provider, serviceTypeProvider);
+    statusProvider.refresh();
 }
 
 async function runHealthCheck(provider: TopazTreeProvider, serviceTypeProvider: TopazServiceTypeTreeProvider): Promise<void> {

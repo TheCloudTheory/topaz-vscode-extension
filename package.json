@@ -43,6 +43,10 @@
         {
           "id": "topazByServiceType",
           "name": "By Service Type"
+        },
+        {
+          "id": "topazStatus",
+          "name": "Status"
         }
       ]
     },
@@ -70,6 +74,12 @@
         "title": "Create Resource Group",
         "icon": "$(add)",
         "category": "Topaz"
+      },
+      {
+        "command": "topaz.refreshStatus",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "Topaz"
       }
     ],
     "menus": {
@@ -82,6 +92,11 @@
         {
           "command": "topaz.refresh",
           "when": "view == topazByServiceType",
+          "group": "navigation"
+        },
+        {
+          "command": "topaz.refreshStatus",
+          "when": "view == topazStatus",
           "group": "navigation"
         }
       ],
