@@ -105,6 +105,13 @@
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "topaz.deployTemplate",
+          "when": "editorLangId == bicep || editorLangId == arm-template",
+          "group": "navigation"
+        }
+      ],
       "view/title": [
         {
           "command": "topaz.refresh",

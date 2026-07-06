@@ -98,16 +98,6 @@ function getBaseUrl(): string {
     return vscode.workspace.getConfiguration('topaz').get<string>('baseUrl', 'https://topaz.local.dev:8899');
 }
 
-function isDeployableFile(doc: vscode.TextDocument): boolean {
-    if (doc.languageId === 'bicep') { return true; }
-    if (doc.languageId === 'arm-template') { return true; }
-    if (doc.languageId === 'json' || doc.languageId === 'jsonc') {
-        const text = doc.getText(new vscode.Range(0, 0, 5, 0));
-        return text.includes('deploymentTemplate') || text.includes('subscriptionDeploymentTemplate');
-    }
-    return false;
-}
-
 async function compileToArmJson(doc: vscode.TextDocument): Promise<string> {
     if (doc.languageId !== 'bicep') {
         return doc.getText();
@@ -147,7 +137,7 @@ function detectScope(templateJson: string, doc: vscode.TextDocument): DeployScop
     return 'resourceGroup';
 }
 
-async function deployTemplate(doc: vscode.TextDocument): Promise<void> {
+async function deployTemplate(doc: vscode.TextDocument): Promise<boolean> {
     const baseUrl = getBaseUrl();
 
     // Compile first so we can detect scope for Bicep (or validate JSON early)
@@ -156,7 +146,7 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<void> {
         templateJson = await compileToArmJson(doc);
     } catch (e: unknown) {
         vscode.window.showErrorMessage(`Bicep compile failed: ${(e as Error).message}`);
-        return;
+        return false;
     }
 
     let template: unknown;
@@ -164,7 +154,7 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<void> {
         template = JSON.parse(templateJson);
     } catch {
         vscode.window.showErrorMessage('File is not valid JSON.');
-        return;
+        return false;
     }
 
     const scope = detectScope(templateJson, doc);
@@ -173,7 +163,7 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<void> {
         prompt: 'Deployment name',
         value: `vscode-deploy-${Date.now()}`,
     });
-    if (deploymentName === undefined) { return; }
+    if (deploymentName === undefined) { return false; }
 
     let deployPath: string;
 
@@ -183,13 +173,13 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<void> {
             placeHolder: '00000000-0000-0000-0000-000000000000',
             validateInput: v => v ? undefined : 'Required',
         });
-        if (!subscriptionId) { return; }
+        if (!subscriptionId) { return false; }
         const resourceGroup = await vscode.window.showInputBox({
             prompt: 'Resource group name',
             placeHolder: 'my-resource-group',
             validateInput: v => v ? undefined : 'Required',
         });
-        if (!resourceGroup) { return; }
+        if (!resourceGroup) { return false; }
         deployPath = `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
     } else if (scope === 'subscription') {
         const subscriptionId = await vscode.window.showInputBox({
@@ -197,7 +187,7 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<void> {
             placeHolder: '00000000-0000-0000-0000-000000000000',
             validateInput: v => v ? undefined : 'Required',
         });
-        if (!subscriptionId) { return; }
+        if (!subscriptionId) { return false; }
         deployPath = `/subscriptions/${subscriptionId}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
     } else if (scope === 'managementGroup') {
         const mgId = await vscode.window.showInputBox({
@@ -205,21 +195,23 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<void> {
             placeHolder: 'my-management-group',
             validateInput: v => v ? undefined : 'Required',
         });
-        if (!mgId) { return; }
+        if (!mgId) { return false; }
         deployPath = `/providers/Microsoft.Management/managementGroups/${mgId}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
     } else {
         // tenant
         deployPath = `/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
     }
 
-    await vscode.window.withProgress(
+    return await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: `Deploying to Topaz (${scope})…`, cancellable: false },
         async () => {
             try {
                 await apiRequest('PUT', baseUrl, deployPath, { properties: { mode: 'Incremental', template } });
                 vscode.window.showInformationMessage(`Deployment '${deploymentName}' submitted to Topaz.`);
+                return true;
             } catch (e: unknown) {
                 vscode.window.showErrorMessage(`Deployment failed: ${(e as Error).message}`);
+                return false;
             }
         }
     );
@@ -249,32 +241,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     vscode.window.createTreeView('topazStatus', { treeDataProvider: statusProvider });
 
-    // Status bar deploy button
-    const deployBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    deployBtn.command = 'topaz.deployTemplate';
-    deployBtn.text = '$(cloud-upload) Deploy to Topaz';
-    deployBtn.tooltip = 'Deploy this template to the local Topaz emulator';
-
-    function updateDeployBtn(editor?: vscode.TextEditor): void {
-        if (editor && isDeployableFile(editor.document)) {
-            deployBtn.show();
-        } else {
-            deployBtn.hide();
-        }
-    }
-
-    updateDeployBtn(vscode.window.activeTextEditor);
-
     context.subscriptions.push(
-        deployBtn,
-        vscode.window.onDidChangeActiveTextEditor(updateDeployBtn),
-        vscode.workspace.onDidOpenTextDocument(() => updateDeployBtn(vscode.window.activeTextEditor)),
         treeView,
         serviceTypeView,
         vscode.commands.registerCommand('topaz.deployTemplate', async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) { return; }
-            await deployTemplate(editor.document);
+            const deployed = await deployTemplate(editor.document);
+            if (deployed) {
+                provider.refresh();
+                serviceTypeProvider.refresh();
+            }
         }),
         vscode.commands.registerCommand('topaz.refresh', async () => {
             provider.setBaseUrl(getBaseUrl());
