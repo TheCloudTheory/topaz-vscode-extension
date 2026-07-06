@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as https from 'https';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as child_process from 'child_process';
 import { TopazTreeProvider } from './TopazTreeProvider';
 import { TopazServiceTypeTreeProvider } from './TopazServiceTypeTreeProvider';
 import { TopazStatusProvider } from './TopazStatusProvider';
@@ -8,6 +10,55 @@ import { TopazNode } from './TopazTreeProvider';
 import { generateAdminToken } from './auth';
 
 const DOCS_URL = 'https://topaz.thecloudtheory.com/docs/intro/';
+
+let logChannel: vscode.OutputChannel | undefined;
+let logCleanup: (() => void) | undefined;
+
+function startLogStreaming(): void {
+    stopLogStreaming();
+    const cfg = vscode.workspace.getConfiguration('topaz');
+    const source = cfg.get<string>('logSource', 'none');
+    if (source === 'none') { return; }
+
+    if (!logChannel) {
+        logChannel = vscode.window.createOutputChannel('Topaz Logs');
+    }
+    logChannel.show(true);
+
+    if (source === 'file') {
+        const logFile = cfg.get<string>('logFile', '');
+        if (!logFile) {
+            logChannel.appendLine('[Topaz] topaz.logFile is not configured.');
+            return;
+        }
+        let pos = 0;
+        try { pos = fs.statSync(logFile).size; } catch { /* file may not exist yet */ }
+        const watcher = fs.watch(logFile, () => {
+            try {
+                const size = fs.statSync(logFile).size;
+                if (size <= pos) { return; }
+                const buf = Buffer.alloc(size - pos);
+                const fd = fs.openSync(logFile, 'r');
+                fs.readSync(fd, buf, 0, buf.length, pos);
+                fs.closeSync(fd);
+                pos = size;
+                logChannel!.append(buf.toString('utf8'));
+            } catch { /* ignore transient errors */ }
+        });
+        logCleanup = () => watcher.close();
+    } else if (source === 'docker') {
+        const name = cfg.get<string>('containerName', 'topaz.local.dev');
+        const proc = child_process.spawn('docker', ['logs', '-f', '--tail', '100', name]);
+        proc.stdout.on('data', (d: Buffer) => logChannel!.append(d.toString()));
+        proc.stderr.on('data', (d: Buffer) => logChannel!.append(d.toString()));
+        proc.on('error', (e: Error) => logChannel!.appendLine(`[Topaz] docker logs error: ${e.message}`));
+        logCleanup = () => proc.kill();
+    }
+}
+
+function stopLogStreaming(): void {
+    if (logCleanup) { logCleanup(); logCleanup = undefined; }
+}
 
 function apiRequest(method: string, baseUrl: string, path: string, body?: unknown): Promise<void> {
     const token = generateAdminToken(baseUrl);
@@ -148,11 +199,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 serviceTypeProvider.refresh();
                 statusProvider.refresh();
             }
+            if (e.affectsConfiguration('topaz.logSource') ||
+                e.affectsConfiguration('topaz.logFile') ||
+                e.affectsConfiguration('topaz.containerName')) {
+                startLogStreaming();
+            }
         })
     );
 
     await runHealthCheck(provider, serviceTypeProvider);
     statusProvider.refresh();
+    startLogStreaming();
 }
 
 async function runHealthCheck(provider: TopazTreeProvider, serviceTypeProvider: TopazServiceTypeTreeProvider): Promise<void> {
@@ -177,4 +234,7 @@ async function runHealthCheck(provider: TopazTreeProvider, serviceTypeProvider: 
     serviceTypeProvider.refresh();
 }
 
-export function deactivate(): void { /* nothing */ }
+export function deactivate(): void {
+    stopLogStreaming();
+    logChannel?.dispose();
+}

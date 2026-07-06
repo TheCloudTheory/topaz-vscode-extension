@@ -22,6 +22,22 @@
           "type": "string",
           "default": "https://topaz.local.dev:8899",
           "description": "Base URL of the running Topaz instance"
+        },
+        "topaz.logSource": {
+          "type": "string",
+          "enum": ["none", "file", "docker"],
+          "default": "none",
+          "description": "Where to stream Topaz logs from. 'file' tails topaz.log, 'docker' streams from a container."
+        },
+        "topaz.logFile": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to topaz.log (used when topaz.logSource is 'file')"
+        },
+        "topaz.containerName": {
+          "type": "string",
+          "default": "topaz.local.dev",
+          "description": "Docker container name to stream logs from (used when topaz.logSource is 'docker'). Topaz must be started with this name, e.g. --name topaz.local.dev"
         }
       }
     },
