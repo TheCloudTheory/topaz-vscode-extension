@@ -181,6 +181,51 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<boolean> {
 
     const scope = detectScope(templateJson, doc);
 
+    // Optional parameters file
+    let parameters: unknown | undefined;
+    const paramChoice = await vscode.window.showQuickPick(
+        [{ label: 'No parameters file', value: false }, { label: 'Select parameters file…', value: true }],
+        { placeHolder: 'Provide a parameters file?' }
+    );
+    if (paramChoice === undefined) { return false; }
+    if (paramChoice.value) {
+        const uris = await vscode.window.showOpenDialog({
+            canSelectMany: false,
+            filters: { 'Parameter files': ['json', 'bicepparam'] },
+            title: 'Select ARM parameters file',
+        });
+        if (!uris || uris.length === 0) { return false; }
+        const paramUri = uris[0];
+        let paramJson: string;
+        if (paramUri.fsPath.endsWith('.bicepparam')) {
+            paramJson = await new Promise<string>((resolve, reject) => {
+                const proc = child_process.spawn('az', ['bicep', 'build-params', '--file', paramUri.fsPath, '--stdout']);
+                let out = ''; let err = '';
+                proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+                proc.stderr.on('data', (d: Buffer) => { err += d.toString(); });
+                proc.on('error', reject);
+                proc.on('close', code => {
+                    if (code !== 0) { reject(new Error(err || 'bicep build-params failed')); return; }
+                    const s = out.indexOf('{'); const e = out.lastIndexOf('}');
+                    if (s >= 0 && e > s) { resolve(out.slice(s, e + 1)); }
+                    else { reject(new Error('bicep build-params produced no JSON output')); }
+                });
+            });
+        } else {
+            paramJson = fs.readFileSync(paramUri.fsPath, 'utf8');
+        }
+        try {
+            const parsed = JSON.parse(paramJson) as { parametersJson?: unknown; parameters?: unknown };
+            // az bicep build-params --stdout wraps in { parametersJson: "<json-string>", templateFilePath: "..." }
+            // where parametersJson is a serialized string, not an object — parse it again if needed
+            const raw = parsed.parametersJson ?? parsed.parameters ?? parsed;
+            parameters = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        } catch {
+            vscode.window.showErrorMessage('Parameters file is not valid JSON.');
+            return false;
+        }
+    }
+
     const deploymentName = await vscode.window.showInputBox({
         prompt: 'Deployment name',
         value: `vscode-deploy-${Date.now()}`,
@@ -190,11 +235,7 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<boolean> {
     let deployPath: string;
 
     if (scope === 'resourceGroup') {
-        const subscriptionId = await vscode.window.showInputBox({
-            prompt: 'Subscription ID',
-            placeHolder: '00000000-0000-0000-0000-000000000000',
-            validateInput: v => v ? undefined : 'Required',
-        });
+        const subscriptionId = await pickSubscriptionId(baseUrl);
         if (!subscriptionId) { return false; }
         const resourceGroup = await vscode.window.showInputBox({
             prompt: 'Resource group name',
@@ -204,11 +245,7 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<boolean> {
         if (!resourceGroup) { return false; }
         deployPath = `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
     } else if (scope === 'subscription') {
-        const subscriptionId = await vscode.window.showInputBox({
-            prompt: 'Subscription ID',
-            placeHolder: '00000000-0000-0000-0000-000000000000',
-            validateInput: v => v ? undefined : 'Required',
-        });
+        const subscriptionId = await pickSubscriptionId(baseUrl);
         if (!subscriptionId) { return false; }
         deployPath = `/subscriptions/${subscriptionId}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
     } else if (scope === 'managementGroup') {
@@ -228,7 +265,7 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<boolean> {
         { location: vscode.ProgressLocation.Notification, title: `Deploying to Topaz (${scope})…`, cancellable: false },
         async () => {
             try {
-                await apiRequest('PUT', baseUrl, deployPath, { properties: { mode: 'Incremental', template } });
+                await apiRequest('PUT', baseUrl, deployPath, { properties: { mode: 'Incremental', template, ...(parameters ? { parameters } : {}) } });
                 vscode.window.showInformationMessage(`Deployment '${deploymentName}' submitted to Topaz.`);
                 return true;
             } catch (e: unknown) {
@@ -237,6 +274,47 @@ async function deployTemplate(doc: vscode.TextDocument): Promise<boolean> {
             }
         }
     );
+}
+
+async function pickSubscriptionId(baseUrl: string): Promise<string | undefined> {
+    const token = generateAdminToken(baseUrl);
+    const url = new URL(`${baseUrl}/subscriptions?api-version=2022-12-01`);
+    let subs: Array<{ subscriptionId: string; displayName: string }> = [];
+    try {
+        const res = await new Promise<{ value: Array<{ subscriptionId: string; displayName: string }> }>((resolve, reject) => {
+            const req = https.request(
+                { hostname: url.hostname, port: url.port, path: url.pathname + url.search, method: 'GET', rejectUnauthorized: false, headers: { Authorization: `Bearer ${token}` } },
+                res => {
+                    let data = '';
+                    res.on('data', (c: Buffer) => { data += c.toString(); });
+                    res.on('end', () => {
+                        if (res.statusCode && res.statusCode >= 400) { reject(new Error(`HTTP ${res.statusCode}`)); return; }
+                        try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+                    });
+                }
+            );
+            req.on('error', reject);
+            req.setTimeout(5000, () => { req.destroy(); reject(new Error('timeout')); });
+            req.end();
+        });
+        subs = res.value ?? [];
+    } catch { /* fall through to manual input */ }
+
+    if (subs.length > 0) {
+        const items = [
+            ...subs.map(s => ({ label: s.displayName, description: s.subscriptionId, value: s.subscriptionId })),
+            { label: '$(edit) Enter manually…', description: '', value: '' },
+        ];
+        const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Select a subscription' });
+        if (picked === undefined) { return undefined; }
+        if (picked.value) { return picked.value; }
+    }
+
+    return await vscode.window.showInputBox({
+        prompt: 'Subscription ID',
+        placeHolder: '00000000-0000-0000-0000-000000000000',
+        validateInput: v => v ? undefined : 'Required',
+    });
 }
 
 function checkHealth(baseUrl: string): Promise<boolean> {
