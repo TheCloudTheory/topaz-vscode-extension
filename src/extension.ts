@@ -98,6 +98,133 @@ function getBaseUrl(): string {
     return vscode.workspace.getConfiguration('topaz').get<string>('baseUrl', 'https://topaz.local.dev:8899');
 }
 
+function isDeployableFile(doc: vscode.TextDocument): boolean {
+    if (doc.languageId === 'bicep') { return true; }
+    if (doc.languageId === 'arm-template') { return true; }
+    if (doc.languageId === 'json' || doc.languageId === 'jsonc') {
+        const text = doc.getText(new vscode.Range(0, 0, 5, 0));
+        return text.includes('deploymentTemplate') || text.includes('subscriptionDeploymentTemplate');
+    }
+    return false;
+}
+
+async function compileToArmJson(doc: vscode.TextDocument): Promise<string> {
+    if (doc.languageId !== 'bicep') {
+        return doc.getText();
+    }
+    return new Promise((resolve, reject) => {
+        const proc = child_process.spawn('az', ['bicep', 'build', '--file', doc.uri.fsPath, '--stdout']);
+        let out = '';
+        let err = '';
+        proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
+        proc.stderr.on('data', (d: Buffer) => { err += d.toString(); });
+        proc.on('error', reject);
+        proc.on('close', code => {
+            if (code !== 0) { reject(new Error(err || 'bicep build failed')); } else { resolve(out); }
+        });
+    });
+}
+
+type DeployScope = 'resourceGroup' | 'subscription' | 'managementGroup' | 'tenant';
+
+function detectScope(templateJson: string, doc: vscode.TextDocument): DeployScope {
+    if (doc.languageId === 'bicep') {
+        const match = doc.getText().match(/^\s*targetScope\s*=\s*'([^']+)'/m);
+        if (match) {
+            const s = match[1];
+            if (s === 'subscription') { return 'subscription'; }
+            if (s === 'managementGroup') { return 'managementGroup'; }
+            if (s === 'tenant') { return 'tenant'; }
+        }
+        return 'resourceGroup';
+    }
+    // ARM JSON — check $schema
+    const schemaMatch = templateJson.match(/"\\?\$schema"\s*:\s*"([^"]+)"/);
+    const schema = schemaMatch ? schemaMatch[1] : '';
+    if (schema.includes('subscriptionDeploymentTemplate')) { return 'subscription'; }
+    if (schema.includes('managementGroupDeploymentTemplate')) { return 'managementGroup'; }
+    if (schema.includes('tenantDeploymentTemplate')) { return 'tenant'; }
+    return 'resourceGroup';
+}
+
+async function deployTemplate(doc: vscode.TextDocument): Promise<void> {
+    const baseUrl = getBaseUrl();
+
+    // Compile first so we can detect scope for Bicep (or validate JSON early)
+    let templateJson: string;
+    try {
+        templateJson = await compileToArmJson(doc);
+    } catch (e: unknown) {
+        vscode.window.showErrorMessage(`Bicep compile failed: ${(e as Error).message}`);
+        return;
+    }
+
+    let template: unknown;
+    try {
+        template = JSON.parse(templateJson);
+    } catch {
+        vscode.window.showErrorMessage('File is not valid JSON.');
+        return;
+    }
+
+    const scope = detectScope(templateJson, doc);
+
+    const deploymentName = await vscode.window.showInputBox({
+        prompt: 'Deployment name',
+        value: `vscode-deploy-${Date.now()}`,
+    });
+    if (deploymentName === undefined) { return; }
+
+    let deployPath: string;
+
+    if (scope === 'resourceGroup') {
+        const subscriptionId = await vscode.window.showInputBox({
+            prompt: 'Subscription ID',
+            placeHolder: '00000000-0000-0000-0000-000000000000',
+            validateInput: v => v ? undefined : 'Required',
+        });
+        if (!subscriptionId) { return; }
+        const resourceGroup = await vscode.window.showInputBox({
+            prompt: 'Resource group name',
+            placeHolder: 'my-resource-group',
+            validateInput: v => v ? undefined : 'Required',
+        });
+        if (!resourceGroup) { return; }
+        deployPath = `/subscriptions/${subscriptionId}/resourceGroups/${resourceGroup}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
+    } else if (scope === 'subscription') {
+        const subscriptionId = await vscode.window.showInputBox({
+            prompt: 'Subscription ID',
+            placeHolder: '00000000-0000-0000-0000-000000000000',
+            validateInput: v => v ? undefined : 'Required',
+        });
+        if (!subscriptionId) { return; }
+        deployPath = `/subscriptions/${subscriptionId}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
+    } else if (scope === 'managementGroup') {
+        const mgId = await vscode.window.showInputBox({
+            prompt: 'Management group ID',
+            placeHolder: 'my-management-group',
+            validateInput: v => v ? undefined : 'Required',
+        });
+        if (!mgId) { return; }
+        deployPath = `/providers/Microsoft.Management/managementGroups/${mgId}/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
+    } else {
+        // tenant
+        deployPath = `/providers/Microsoft.Resources/deployments/${deploymentName}?api-version=2021-04-01`;
+    }
+
+    await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: `Deploying to Topaz (${scope})…`, cancellable: false },
+        async () => {
+            try {
+                await apiRequest('PUT', baseUrl, deployPath, { properties: { mode: 'Incremental', template } });
+                vscode.window.showInformationMessage(`Deployment '${deploymentName}' submitted to Topaz.`);
+            } catch (e: unknown) {
+                vscode.window.showErrorMessage(`Deployment failed: ${(e as Error).message}`);
+            }
+        }
+    );
+}
+
 function checkHealth(baseUrl: string): Promise<boolean> {
     return new Promise(resolve => {
         const req = https.get(`${baseUrl}/health`, { rejectUnauthorized: false }, res => {
@@ -122,9 +249,33 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     vscode.window.createTreeView('topazStatus', { treeDataProvider: statusProvider });
 
+    // Status bar deploy button
+    const deployBtn = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    deployBtn.command = 'topaz.deployTemplate';
+    deployBtn.text = '$(cloud-upload) Deploy to Topaz';
+    deployBtn.tooltip = 'Deploy this template to the local Topaz emulator';
+
+    function updateDeployBtn(editor?: vscode.TextEditor): void {
+        if (editor && isDeployableFile(editor.document)) {
+            deployBtn.show();
+        } else {
+            deployBtn.hide();
+        }
+    }
+
+    updateDeployBtn(vscode.window.activeTextEditor);
+
     context.subscriptions.push(
+        deployBtn,
+        vscode.window.onDidChangeActiveTextEditor(updateDeployBtn),
+        vscode.workspace.onDidOpenTextDocument(() => updateDeployBtn(vscode.window.activeTextEditor)),
         treeView,
         serviceTypeView,
+        vscode.commands.registerCommand('topaz.deployTemplate', async () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) { return; }
+            await deployTemplate(editor.document);
+        }),
         vscode.commands.registerCommand('topaz.refresh', async () => {
             provider.setBaseUrl(getBaseUrl());
             serviceTypeProvider.setBaseUrl(getBaseUrl());

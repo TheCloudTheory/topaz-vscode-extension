@@ -12,7 +12,7 @@
   },
   "license": "Apache-2.0",
   "icon": "resources/topaz-logo.png",
-  "activationEvents": ["onStartupFinished"],
+  "activationEvents": ["onStartupFinished", "onLanguage:bicep", "onLanguage:json", "onLanguage:arm-template"],
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
@@ -95,6 +95,12 @@
         "command": "topaz.refreshStatus",
         "title": "Refresh",
         "icon": "$(refresh)",
+        "category": "Topaz"
+      },
+      {
+        "command": "topaz.deployTemplate",
+        "title": "Deploy to Topaz",
+        "icon": "$(cloud-upload)",
         "category": "Topaz"
       }
     ],
