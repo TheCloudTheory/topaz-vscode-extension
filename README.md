@@ -28,9 +28,31 @@ docker run -p 8899:8899 thecloudtheory/topaz-host:nightly
 
 By default, the extension connects to `https://topaz.local.dev:8899`. You can change this in VS Code settings under **Topaz > Base URL**.
 
+## Settings
+
+| Setting | Default | Description |
+|---|---|---|
+| `topaz.baseUrl` | `https://topaz.local.dev:8899` | Base URL of the running Topaz instance |
+| `topaz.logSource` | `none` | Where to stream Topaz logs from: `none`, `file`, or `docker` |
+| `topaz.logFile` | _(empty)_ | Absolute path to `topaz.log` (used when `logSource` is `file`) |
+| `topaz.containerName` | `topaz.local.dev` | Docker container name to stream logs from (used when `logSource` is `docker`) |
+
+### Log streaming
+
+To stream logs from a **log file**, set `topaz.logSource` to `file` and point `topaz.logFile` at the `topaz.log` produced in Topaz's working directory.
+
+To stream logs from a **Docker container**, set `topaz.logSource` to `docker` and make sure Topaz is started with the matching `--name` flag:
+
+```bash
+docker run -p 8899:8899 --name topaz.local.dev thecloudtheory/topaz-host
+```
+
+Logs appear in the **Output** panel (`⇧⌘U`) under the **Topaz Logs** channel.
+
 ## Features
 
 - Browse resources grouped by resource group or by service type
 - Create management groups, subscriptions, and resource groups
 - Monitor emulator status: health, version, and running mode
+- Stream Topaz logs from a local log file or a Docker container
 - Refresh resource views on demand
