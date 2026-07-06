@@ -319,6 +319,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 vscode.window.showErrorMessage(`Failed to create subscription: ${(e as Error).message}`);
             }
         }),
+        vscode.commands.registerCommand('topaz.copySubscriptionId', async (node?: TopazNode) => {
+            if (!node) { return; }
+            const id = node.id.replace(/^\/subscriptions\//, '');
+            await vscode.env.clipboard.writeText(id);
+            vscode.window.showInformationMessage(`Copied subscription ID: ${id}`);
+        }),
         vscode.commands.registerCommand('topaz.createResourceGroup', async (node?: TopazNode) => {
             if (!node) { return; }
             const subscriptionId = node.id.replace(/^\/subscriptions\//, '');

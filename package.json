@@ -92,6 +92,12 @@
         "category": "Topaz"
       },
       {
+        "command": "topaz.copySubscriptionId",
+        "title": "Copy Subscription ID",
+        "icon": "$(copy)",
+        "category": "Topaz"
+      },
+      {
         "command": "topaz.refreshStatus",
         "title": "Refresh",
         "icon": "$(refresh)",
@@ -144,6 +150,11 @@
           "command": "topaz.createResourceGroup",
           "when": "view == topazResources && viewItem == subscription",
           "group": "inline@1"
+        },
+        {
+          "command": "topaz.copySubscriptionId",
+          "when": "view == topazResources && viewItem == subscription",
+          "group": "inline@2"
         }
       ]
     }

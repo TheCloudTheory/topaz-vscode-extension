@@ -81,8 +81,6 @@ export class TopazTreeProvider implements vscode.TreeDataProvider<TopazNode> {
         }
     }
 
-    // ── API helpers ──────────────────────────────────────────────────────────
-
     private get<T>(path: string): Promise<T> {
         const token = generateAdminToken(this.baseUrl);
         const url = new URL(`${this.baseUrl}${path}`);
