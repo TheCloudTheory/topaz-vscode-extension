@@ -102,15 +102,34 @@ async function compileToArmJson(doc: vscode.TextDocument): Promise<string> {
     if (doc.languageId !== 'bicep') {
         return doc.getText();
     }
+
+    // Write current in-memory content to a temp file so unsaved changes are included
+    const os = await import('os');
+    const path = await import('path');
+    const tmpFile = path.join(os.tmpdir(), `topaz-deploy-${Date.now()}.bicep`);
+    fs.writeFileSync(tmpFile, doc.getText(), 'utf8');
+
     return new Promise((resolve, reject) => {
-        const proc = child_process.spawn('az', ['bicep', 'build', '--file', doc.uri.fsPath, '--stdout']);
+        const proc = child_process.spawn('az', ['bicep', 'build', '--file', tmpFile, '--stdout']);
         let out = '';
         let err = '';
         proc.stdout.on('data', (d: Buffer) => { out += d.toString(); });
         proc.stderr.on('data', (d: Buffer) => { err += d.toString(); });
-        proc.on('error', reject);
+        proc.on('error', (e) => { fs.unlink(tmpFile, () => {}); reject(e); });
         proc.on('close', code => {
-            if (code !== 0) { reject(new Error(err || 'bicep build failed')); } else { resolve(out); }
+            fs.unlink(tmpFile, () => {});
+            if (code !== 0) {
+                reject(new Error(err || 'bicep build failed'));
+            } else {
+                // Strip any non-JSON prefix/suffix (warnings/progress lines emitted to stdout)
+                const jsonStart = out.indexOf('{');
+                const jsonEnd = out.lastIndexOf('}');
+                if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                    resolve(out.slice(jsonStart, jsonEnd + 1));
+                } else {
+                    reject(new Error('bicep build produced no JSON output'));
+                }
+            }
         });
     });
 }

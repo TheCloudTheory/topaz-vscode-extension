@@ -100,7 +100,7 @@
       {
         "command": "topaz.deployTemplate",
         "title": "Deploy to Topaz",
-        "icon": "$(cloud-upload)",
+        "icon": "$(rocket)",
         "category": "Topaz"
       }
     ],
