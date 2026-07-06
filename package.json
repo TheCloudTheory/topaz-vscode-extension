@@ -64,6 +64,12 @@
         "title": "Create Subscription",
         "icon": "$(add)",
         "category": "Topaz"
+      },
+      {
+        "command": "topaz.createResourceGroup",
+        "title": "Create Resource Group",
+        "icon": "$(add)",
+        "category": "Topaz"
       }
     ],
     "menus": {
@@ -89,6 +95,11 @@
           "command": "topaz.createSubscription",
           "when": "view == topazResources && viewItem == managementGroup",
           "group": "inline@2"
+        },
+        {
+          "command": "topaz.createResourceGroup",
+          "when": "view == topazResources && viewItem == subscription",
+          "group": "inline@1"
         }
       ]
     }

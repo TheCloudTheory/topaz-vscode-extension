@@ -114,6 +114,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 vscode.window.showErrorMessage(`Failed to create subscription: ${(e as Error).message}`);
             }
         }),
+        vscode.commands.registerCommand('topaz.createResourceGroup', async (node?: TopazNode) => {
+            if (!node) { return; }
+            const subscriptionId = node.id.replace(/^\/subscriptions\//, '');
+            const name = await vscode.window.showInputBox({ prompt: 'Resource group name', placeHolder: 'my-resource-group' });
+            if (!name) { return; }
+            const location = await vscode.window.showInputBox({ prompt: 'Location', value: 'westeurope' });
+            if (location === undefined) { return; }
+            try {
+                await apiRequest('PUT', getBaseUrl(),
+                    `/subscriptions/${subscriptionId}/resourcegroups/${name}?api-version=2021-04-01`,
+                    { location }
+                );
+                provider.refresh();
+                serviceTypeProvider.refresh();
+            } catch (e: unknown) {
+                vscode.window.showErrorMessage(`Failed to create resource group: ${(e as Error).message}`);
+            }
+        }),
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('topaz.baseUrl')) {
                 provider.setBaseUrl(getBaseUrl());

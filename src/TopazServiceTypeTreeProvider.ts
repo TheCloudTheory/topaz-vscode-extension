@@ -171,6 +171,8 @@ export class TopazServiceTypeTreeProvider implements vscode.TreeDataProvider<Ser
                     if (!map.has(t)) { map.set(t, []); }
                     map.get(t)!.push(r);
                 }
+
+
             } catch {
                 // skip subscriptions that fail
             }
