@@ -5,6 +5,8 @@
 
 Explore and manage emulated Azure resources using [Topaz](https://topaz.thecloudtheory.com/) directly from VS Code.
 
+> **Important:** This version of the extension requires **Topaz 1.9** (currently available as the nightly build: `thecloudtheory/topaz-host:nightly`). It is not compatible with earlier releases.
+
 ## What is Topaz?
 
 [Topaz](https://topaz.thecloudtheory.com/) is a single-binary Azure emulator. Instead of running Azurite for Storage, a separate emulator for Service Bus, and another for Key Vault — you run one tool. It supports both the control and data planes of Azure services, emulates ARM deployments with Bicep and ARM Templates, and implements Azure RBAC, all locally with no Azure subscription required.
@@ -39,6 +41,7 @@ By default, the extension connects to `https://topaz.local.dev:8899`. You can ch
 | `topaz.logSource` | `none` | Where to stream Topaz logs from: `none`, `file`, or `docker` |
 | `topaz.logFile` | _(empty)_ | Absolute path to `topaz.log` (used when `logSource` is `file`) |
 | `topaz.containerName` | `topaz.local.dev` | Docker container name to stream logs from (used when `logSource` is `docker`) |
+| `topaz.dockerImage` | `thecloudtheory/topaz-host:latest` | Docker image used when starting Topaz via the **Start Topaz (Docker)** button. Use `thecloudtheory/topaz-host:nightly` for the nightly build or a local image name. |
 
 ### Log streaming
 
@@ -57,5 +60,6 @@ Logs appear in the **Output** panel (`⇧⌘U`) under the **Topaz Logs** channel
 - Browse resources grouped by resource group or by service type
 - Create management groups, subscriptions, and resource groups
 - Monitor emulator status: health, version, and running mode
+- Start Topaz directly from the Status panel — as a standalone process (`topaz-host`) or via Docker
 - Stream Topaz logs from a local log file or a Docker container
 - Refresh resource views on demand

@@ -2,7 +2,7 @@
   "name": "topaz-azure-emulator",
   "displayName": "Topaz Azure Emulator",
   "description": "Local Azure development with Topaz — explore resources without leaving VS Code",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "TheCloudTheory",
   "engines": { "vscode": "^1.90.0" },
   "categories": ["Azure"],
@@ -38,6 +38,11 @@
           "type": "string",
           "default": "topaz.local.dev",
           "description": "Docker container name to stream logs from (used when topaz.logSource is 'docker'). Topaz must be started with this name, e.g. --name topaz.local.dev"
+        },
+        "topaz.dockerImage": {
+          "type": "string",
+          "default": "thecloudtheory/topaz-host:latest",
+          "description": "Docker image used when starting Topaz via Docker. Use 'thecloudtheory/topaz-host:latest' for the latest release, 'thecloudtheory/topaz-host:nightly' for the nightly build, or a local image name."
         }
       }
     },
@@ -111,6 +116,18 @@
         "command": "topaz.deployTemplate",
         "title": "Deploy to Topaz",
         "icon": "$(rocket)",
+        "category": "Topaz"
+      },
+      {
+        "command": "topaz.startStandalone",
+        "title": "Start Topaz (standalone)",
+        "icon": "$(play)",
+        "category": "Topaz"
+      },
+      {
+        "command": "topaz.startDocker",
+        "title": "Start Topaz (Docker)",
+        "icon": "$(vm-running)",
         "category": "Topaz"
       }
     ],

@@ -348,6 +348,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         treeView,
         serviceTypeView,
+        { dispose: () => statusProvider.dispose() },
         vscode.commands.registerCommand('topaz.deployTemplate', async () => {
             const editor = vscode.window.activeTextEditor;
             if (!editor) { return; }
@@ -364,7 +365,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             serviceTypeProvider.setBaseUrl(getBaseUrl());
             statusProvider.setBaseUrl(getBaseUrl());
             deploymentsProvider.setBaseUrl(getBaseUrl());
-            await runHealthCheck(provider, serviceTypeProvider, deploymentsProvider);
+            runHealthCheck(provider, serviceTypeProvider, deploymentsProvider);
             provider.refresh();
             serviceTypeProvider.refresh();
             statusProvider.refresh();
@@ -432,6 +433,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 vscode.window.showErrorMessage(`Failed to create resource group: ${(e as Error).message}`);
             }
         }),
+        vscode.commands.registerCommand('topaz.startStandalone', () => {
+            const terminal = vscode.window.createTerminal('Topaz');
+            terminal.show();
+            terminal.sendText('topaz-host');
+        }),
+        vscode.commands.registerCommand('topaz.startDocker', async () => {
+            const cfg = vscode.workspace.getConfiguration('topaz');
+            const containerName = cfg.get<string>('containerName', 'topaz.local.dev');
+            const image = cfg.get<string>('dockerImage', 'thecloudtheory/topaz-host:latest');
+            const terminal = vscode.window.createTerminal('Topaz (Docker)');
+            terminal.show();
+            terminal.sendText(`docker run --rm -d --name ${containerName} -p 8899:8899 ${image}`);
+        }),
         vscode.workspace.onDidChangeConfiguration(e => {
             if (e.affectsConfiguration('topaz.baseUrl')) {
                 provider.setBaseUrl(getBaseUrl());
@@ -451,9 +465,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         })
     );
 
-    await runHealthCheck(provider, serviceTypeProvider, deploymentsProvider);
     statusProvider.refresh();
     startLogStreaming();
+    runHealthCheck(provider, serviceTypeProvider, deploymentsProvider);
 }
 
 async function runHealthCheck(provider: TopazTreeProvider, serviceTypeProvider: TopazServiceTypeTreeProvider, deploymentsProvider?: import('./TopazDeploymentsProvider').TopazDeploymentsProvider): Promise<void> {
@@ -461,13 +475,12 @@ async function runHealthCheck(provider: TopazTreeProvider, serviceTypeProvider: 
     const healthy = await checkHealth(baseUrl);
 
     if (!healthy) {
-        const choice = await vscode.window.showErrorMessage(
+        vscode.window.showErrorMessage(
             `Topaz is not running at ${baseUrl}. Make sure it is started before using this extension.`,
             'Open Docs'
-        );
-        if (choice === 'Open Docs') {
-            vscode.env.openExternal(vscode.Uri.parse(DOCS_URL));
-        }
+        ).then(choice => {
+            if (choice === 'Open Docs') { vscode.env.openExternal(vscode.Uri.parse(DOCS_URL)); }
+        });
         provider.setAvailable(false);
         serviceTypeProvider.setAvailable(false);
         deploymentsProvider?.setAvailable(false);
