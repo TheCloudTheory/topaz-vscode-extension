@@ -61,6 +61,10 @@
           "name": "By Service Type"
         },
         {
+          "id": "topazDeployments",
+          "name": "Deployments"
+        },
+        {
           "id": "topazStatus",
           "name": "Status"
         }
@@ -127,6 +131,11 @@
         {
           "command": "topaz.refresh",
           "when": "view == topazByServiceType",
+          "group": "navigation"
+        },
+        {
+          "command": "topaz.refresh",
+          "when": "view == topazDeployments",
           "group": "navigation"
         },
         {

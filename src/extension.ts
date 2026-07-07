@@ -6,6 +6,7 @@ import * as child_process from 'child_process';
 import { TopazTreeProvider } from './TopazTreeProvider';
 import { TopazServiceTypeTreeProvider } from './TopazServiceTypeTreeProvider';
 import { TopazStatusProvider } from './TopazStatusProvider';
+import { TopazDeploymentsProvider } from './TopazDeploymentsProvider';
 import { TopazNode } from './TopazTreeProvider';
 import { generateAdminToken } from './auth';
 
@@ -332,6 +333,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const provider = new TopazTreeProvider(getBaseUrl);
     const serviceTypeProvider = new TopazServiceTypeTreeProvider(getBaseUrl);
     const statusProvider = new TopazStatusProvider(getBaseUrl);
+    const deploymentsProvider = new TopazDeploymentsProvider(getBaseUrl);
 
     const treeView = vscode.window.createTreeView('topazResources', { treeDataProvider: provider });
     provider.setTreeView(treeView);
@@ -339,6 +341,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const serviceTypeView = vscode.window.createTreeView('topazByServiceType', { treeDataProvider: serviceTypeProvider });
     serviceTypeProvider.setTreeView(serviceTypeView);
 
+    const deploymentsView = vscode.window.createTreeView('topazDeployments', { treeDataProvider: deploymentsProvider });
+    deploymentsProvider.setTreeView(deploymentsView);
     vscode.window.createTreeView('topazStatus', { treeDataProvider: statusProvider });
 
     context.subscriptions.push(
@@ -351,16 +355,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             if (deployed) {
                 provider.refresh();
                 serviceTypeProvider.refresh();
+                deploymentsProvider.refresh();
             }
         }),
+        deploymentsView,
         vscode.commands.registerCommand('topaz.refresh', async () => {
             provider.setBaseUrl(getBaseUrl());
             serviceTypeProvider.setBaseUrl(getBaseUrl());
             statusProvider.setBaseUrl(getBaseUrl());
-            await runHealthCheck(provider, serviceTypeProvider);
+            deploymentsProvider.setBaseUrl(getBaseUrl());
+            await runHealthCheck(provider, serviceTypeProvider, deploymentsProvider);
             provider.refresh();
             serviceTypeProvider.refresh();
             statusProvider.refresh();
+            deploymentsProvider.refresh();
         }),
         vscode.commands.registerCommand('topaz.refreshStatus', () => { statusProvider.refresh(); }),
         vscode.commands.registerCommand('topaz.createManagementGroup', async (node?: TopazNode) => {
@@ -429,9 +437,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
                 provider.setBaseUrl(getBaseUrl());
                 serviceTypeProvider.setBaseUrl(getBaseUrl());
                 statusProvider.setBaseUrl(getBaseUrl());
+                deploymentsProvider.setBaseUrl(getBaseUrl());
                 provider.refresh();
                 serviceTypeProvider.refresh();
                 statusProvider.refresh();
+                deploymentsProvider.refresh();
             }
             if (e.affectsConfiguration('topaz.logSource') ||
                 e.affectsConfiguration('topaz.logFile') ||
@@ -441,12 +451,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         })
     );
 
-    await runHealthCheck(provider, serviceTypeProvider);
+    await runHealthCheck(provider, serviceTypeProvider, deploymentsProvider);
     statusProvider.refresh();
     startLogStreaming();
 }
 
-async function runHealthCheck(provider: TopazTreeProvider, serviceTypeProvider: TopazServiceTypeTreeProvider): Promise<void> {
+async function runHealthCheck(provider: TopazTreeProvider, serviceTypeProvider: TopazServiceTypeTreeProvider, deploymentsProvider?: import('./TopazDeploymentsProvider').TopazDeploymentsProvider): Promise<void> {
     const baseUrl = getBaseUrl();
     const healthy = await checkHealth(baseUrl);
 
@@ -460,12 +470,15 @@ async function runHealthCheck(provider: TopazTreeProvider, serviceTypeProvider: 
         }
         provider.setAvailable(false);
         serviceTypeProvider.setAvailable(false);
+        deploymentsProvider?.setAvailable(false);
     } else {
         provider.setAvailable(true);
         serviceTypeProvider.setAvailable(true);
+        deploymentsProvider?.setAvailable(true);
     }
     provider.refresh();
     serviceTypeProvider.refresh();
+    deploymentsProvider?.refresh();
 }
 
 export function deactivate(): void {
