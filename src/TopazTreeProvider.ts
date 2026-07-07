@@ -136,17 +136,29 @@ export class TopazTreeProvider implements vscode.TreeDataProvider<TopazNode> {
         }>(`/providers/Microsoft.Management/managementGroups/${name}/descendants?api-version=2020-05-01`);
 
         const children = res.value ?? [];
-        return children
-            .filter(c => c.properties?.parent?.id === mgId)
-            .map(c => {
-                const isSub = c.type === '/subscriptions';
-                return {
-                    kind: isSub ? 'subscription' : 'managementGroup',
-                    id: c.id,
-                    label: c.properties?.displayName ?? c.name,
-                    description: isSub ? 'subscription' : undefined,
-                } as TopazNode;
-            });
+        const filtered = children.filter(c => c.properties?.parent?.id === mgId);
+        return Promise.all(filtered.map(async c => {
+            const isSub = c.type === '/subscriptions';
+            const cost = isSub ? await this.getSubscriptionCost(c.id) : undefined;
+            return {
+                kind: isSub ? 'subscription' : 'managementGroup',
+                id: c.id,
+                label: c.properties?.displayName ?? c.name,
+                description: cost ?? (isSub ? 'subscription' : undefined),
+            } as TopazNode;
+        }));
+    }
+
+    private async getSubscriptionCost(subscriptionId: string): Promise<string | undefined> {
+        try {
+            const id = subscriptionId.replace(/^\/subscriptions\//, '');
+            const res = await this.get<{ totalMonthlyCost: number; currency: string }>(
+                `/topaz/subscriptions/${id}/estimatedCosts`
+            );
+            return `~$${res.totalMonthlyCost.toFixed(2)} ${res.currency}/mo`;
+        } catch {
+            return undefined;
+        }
     }
 
     private async getResourceGroups(subscriptionId: string): Promise<TopazNode[]> {
